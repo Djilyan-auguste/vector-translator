@@ -52,3 +52,4 @@ models/
 
 # Gradio
 gradio_cached_examples/
+.venv-test/

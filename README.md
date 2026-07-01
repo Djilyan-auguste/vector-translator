@@ -1,18 +1,59 @@
 # Vector Translator
 
-**[Live Demo](https://huggingface.co/spaces/djilyn/Vector-Translator)** — Interactive GPT-2 logit lens visualization
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Hugging Face Spaces](https://img.shields.io/badge/Hugging%20Face-Spaces-blue)](https://huggingface.co/spaces/djilyn/Vector-Translator)
+[![Open in Colab](https://img.shields.io/badge/Open%20in-Colab-orange?logo=googlecolab)](https://colab.research.google.com/github/Djilyan-auguste/vector-translator/blob/main/experiments.ipynb)
+[![GitHub stars](https://img.shields.io/github/stars/Djilyan-auguste/vector-translator?style=social)](https://github.com/Djilyan-auguste/vector-translator/stargazers)
 
-A mechanistic interpretability research project that extracts, decodes, and tests causal control of semantic concepts from the internal activations of GPT-2 small (124M parameters).
+> **[Live Demo](https://huggingface.co/spaces/djilyn/Vector-Translator)** — Type a sentence and watch GPT-2 small “think” layer by layer.
 
-The project proceeds through five phases: (P0) identifying the decision layer via logit lens analysis; (P1–P2) building a labeled dataset and training linear probes to decode concepts from residual stream activations; (P3) training a non-linear MLP translator and comparing its performance to linear baselines; and (P4) testing whether extracted concept directions are causally steerable via activation steering.
+**Vector Translator** is an end-to-end mechanistic interpretability project that extracts, decodes, and tests *causal control* of semantic concepts from the internal activations of GPT-2 small (124M parameters).
+
+```
+Input text  →  residual stream  →  decoded concepts  →  causal steering test
+      P0            P1–P3                 P4
+```
+
+---
+
+## Why this matters
+
+Large language models are black boxes: they produce fluent text, but we rarely know *how* they represent meaning. This project reverse-engineers GPT-2 by treating its hidden states as an object of study in themselves.
+
+### Key takeaway
+
+> **Decoding is not control.**
+>
+> We can linearly decode concepts like DATE, NUMBER, or NOUN from GPT-2's residual stream with high accuracy. But the directions that best *describe* those concepts do not *cause* them when injected back into the model. This is a real, falsifiable negative result — and it tells us exactly what to build next.
+
+This matters because:
+- **Safety:** before we can align or steer large models, we must know which internal directions are actually causal.
+- **Transparency:** if we can map activations to human concepts, we can audit model behavior instead of trusting it blindly.
+- **Efficiency:** small, interpretable concept probes can replace expensive black-box probing in some debugging workflows.
+
+---
+
+## Demo
+
+Try the live demo on Hugging Face Spaces:
+
+**[Vector Translator — Live Demo](https://huggingface.co/spaces/djilyn/Vector-Translator)**
+
+Enter any text, pick a layer, and see the top-5 predictions, rank percentile, and probability curves evolve through GPT-2's layers.
+
+![Vector Translator demo](figures/demo.gif)
+*The demo shows the Logit Lens (P0): layer-by-layer prediction crystallization.*
+
+> **Note:** The current demo focuses on P0 (Logit Lens). A P2/P3 tab showing concept probes and MLP decoding is on the roadmap.
 
 ---
 
 ## Results Summary
 
-### P0 — Logit Lens: Layer-wise Prediction Crystallization
+### P0 — Logit Lens: The “Decision Layer”
 
-We project the residual stream at each transformer layer onto the vocabulary using the unembedding matrix \(W_U\) [nostalgebraist, 2020]. The key finding is that prediction quality crystallizes at layer 6, not at the final layer 12. Rank percentile (the fraction of vocabulary ranking above the true token) improves from 12.5% at the input to 2.1% at layer 6, a 6× improvement. This pattern is robust across text types:
+We project the residual stream at each layer onto the vocabulary using the unembedding matrix \(W_U\) [nostalgebraist, 2020]. The key finding is that prediction quality **crystallizes at layer 6**, not at the final layer 12. Rank percentile (the fraction of vocabulary ranking above the true token) improves from 12.5% at the input to **2.1% at layer 6**, a 6× improvement. This pattern is robust across text types:
 
 | Text Type | Input Rank | Layer 6 Rank | Improvement Factor |
 |-----------|------------|--------------|-------------------|
@@ -22,7 +63,7 @@ We project the residual stream at each transformer layer onto the vocabulary usi
 | Factual | 81.5% | 2.8% | 29× |
 | Ambiguous | 83.0% | 2.0% | 42× |
 
-Rank percentile is used in preference to raw probability because GPT-2 small rarely assigns high absolute probabilities to correct tokens; a "good" prediction typically has probability below 0.01%. Rank percentile remains interpretable across model scales.
+Rank percentile is used instead of raw probability because GPT-2 small rarely assigns high absolute probabilities to correct tokens; a "good" prediction typically has probability below 0.01%. Rank percentile remains interpretable across model scales.
 
 ![Logit lens heatmap](figures/logit_lens_5_2___2__.png)
 *Figure: Layer-by-layer rank percentile for the prompt "2+2=". The true token "4" crystallizes at layer 6.*
@@ -70,7 +111,7 @@ The gain of +1.4% macro F1 is marginal on 911 tokens, but the direction is confi
 ![MLP vs Linear](figures/p3_mlp_vs_linear.png)
 *Figure: Per-concept F1 comparison. MLP (red) outperforms linear probe (blue) on 6/10 concepts.*
 
-### P4 — Activation Steering: Causal Validation (Negative Result)
+### P4 — Activation Steering: A Falsifiable Negative Result
 
 We test whether mean-difference directions extracted from P1 activations are causally steerable. For each concept, we compute `mean(positive) - mean(negative)`, normalize, and inject at layer 6 with scaling factors `alpha ∈ [-20, 20]` via TransformerLens hooks [Nanda, 2022].
 
@@ -83,52 +124,88 @@ We test whether mean-difference directions extracted from P1 activations are cau
 | VERB | 0.0023 | 0.0025 | 0.0023 | -0.0003 | None |
 | ORG | 0.0004 | 0.0004 | 0.0005 | +0.0001 | None |
 
-**Result:** Mean-difference directions are correlational, not causal. They capture where concept tokens tend to cluster in activation space, but this cluster is not a steerable direction. This is a real negative result: it confirms that decoding (P2/P3) and control (P4) are distinct problems, and points to future work using adversarial contrast pairs, PCA, and orthogonalization as in refusal direction research [Arditi et al., 2024].
+#### What this negative result means
+
+**Mean-difference directions are correlational, not causal.** They capture where concept tokens tend to cluster in activation space, but this cluster is not a steerable direction.
+
+This is not a failure — it is a **scientific result**:
+1. It confirms that **decoding (P2/P3) and control (P4) are distinct problems**.
+2. It validates the methodology: we proposed a hypothesis, tested it, and falsified it.
+3. It points directly to future work: **adversarial contrast pairs + PCA + orthogonalization**, as used in refusal direction research [Arditi et al., 2024].
+
+In other words: we now know *why* the simple approach fails and *exactly* what to try next.
 
 ![Steering results](figures/p4_steering_results.png)
 *Figure: Activation steering curves. Flat lines confirm mean-diff directions are not causal.*
 
 ---
 
-## Setup
-
-Requirements: Python 3.10+, PyTorch 2.0+, and the packages listed in `requirements.txt`.
+## Quick Start
 
 ```bash
-git clone https://github.com/Djilyan-auguste/Vector-Translator-Mechanistic-Interpretability-for-LLMs.git
-cd Vector-Translator-Mechanistic-Interpretability-for-LLMs
+git clone https://github.com/Djilyan-auguste/vector-translator.git
+cd vector-translator
 pip install -r requirements.txt
+```
+
+### Run the experiments
+
+```bash
+# P0: Logit lens — generate layer-by-layer heatmaps
+python code/p0_logit_lens/logit_lens.py
+
+# P2: Linear probes — train concept classifiers
+python code/p2_probes/p2_linear_probes.py
+
+# P3: MLP translator — train non-linear concept decoder
+python code/p3_translator/p3_mlp_translator.py
+
+# P4: Activation steering — causal validation
+python code/p4_steering/p4_steering.py
 ```
 
 All experiments run on CPU in under 30 minutes.
 
+### Run the local demo
+
+```bash
+python demo/app.py
+# Open http://localhost:7860
+```
+
 ---
 
-## Usage
+## Tests & CI
 
-### P0: Logit Lens
-```bash
-python code/p0_logit_lens/logit_lens.py
-```
-Generates layer-by-layer heatmaps of rank percentile for input prompts.
+We use a minimal `pytest` suite to ensure the demo loads and the core functions run without errors.
 
-### P2: Linear Probes
 ```bash
-python code/p2_probes/p2_linear_probes.py
+pip install -r requirements-dev.txt
+pytest tests/
 ```
-Trains linear probes per layer and outputs F1 scores and comparison plots.
 
-### P3: MLP Translator
-```bash
-python code/p3_translator/p3_mlp_translator.py
-```
-Trains the MLP translator with early stopping and evaluates against linear baselines.
+A GitHub Actions workflow runs the tests on every push and pull request.
 
-### P4: Activation Steering
-```bash
-python code/p4_steering/p4_steering.py
+![CI](https://github.com/Djilyan-auguste/vector-translator/workflows/CI/badge.svg)
+
+---
+
+## Repository Structure
+
 ```
-Runs activation steering experiments and outputs causal effect curves.
+vector-translator/
+├── code/               # Source scripts for P0–P4
+├── data/               # Generated datasets and model artifacts
+├── demo/               # Gradio demo (local + Hugging Face Spaces)
+├── figures/            # Publication-ready figures
+├── experiments.ipynb   # Reproducible notebook (P0–P4)
+├── tests/              # pytest suite
+├── .github/workflows/  # CI configuration
+├── README.md
+├── requirements.txt
+├── requirements-dev.txt
+└── LICENSE
+```
 
 ---
 
@@ -141,6 +218,7 @@ Runs activation steering experiments and outputs causal effect curves.
 | [scikit-learn](https://scikit-learn.org/) | Linear probes, metrics, train/test split |
 | [spaCy](https://spacy.io/) | NER and POS tagging for concept labeling |
 | [matplotlib](https://matplotlib.org/) / [seaborn](https://seaborn.pydata.org/) | Publication-ready figures |
+| [Gradio](https://gradio.app/) | Interactive demo |
 
 ---
 
@@ -152,6 +230,7 @@ Runs activation steering experiments and outputs causal effect curves.
 | Single model (GPT-2 small, 124M) | Weak linear encoding; steering fails | Test on GPT-2 medium/large or Qwen 1.5B |
 | Mean-difference directions | Correlational, not causal | Adversarial contrast pairs + PCA [Arditi et al., 2024] |
 | Binary concepts only | No multi-class or continuous concepts | Extend to regression (e.g., sentiment scores) |
+| Demo limited to P0 | P2/P3 results not yet interactive | Add probe visualization tab to Gradio demo |
 
 ---
 
@@ -167,19 +246,25 @@ Runs activation steering experiments and outputs causal effect curves.
 
 ## Citation
 
-If you use this work in your research, please cite:
-
 ```bibtex
 @misc{vector-translator,
   author = {Auguste, Djilyan},
   title = {Vector Translator: Decoding Hidden Concepts from GPT-2 Activations},
   year = {2026},
-  howpublished = {\url{https://github.com/Djilyan-auguste/Vector-Translator}}
+  howpublished = {\url{https://github.com/Djilyan-auguste/vector-translator}}
 }
 ```
 
 ---
 
+## Related Content
+
+- **[Live Demo on Hugging Face Spaces](https://huggingface.co/spaces/djilyn/Vector-Translator)**
+- **[Read the article on LinkedIn](#)** *(coming soon)*
+- **[Interactive notebook](https://colab.research.google.com/github/Djilyan-auguste/vector-translator/blob/main/experiments.ipynb)** on Google Colab
+
+---
+
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+[MIT License](./LICENSE)
